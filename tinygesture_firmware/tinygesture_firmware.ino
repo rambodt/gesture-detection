@@ -15,10 +15,11 @@
  *    (find it by looking inside the downloaded library's src/ folder, e.g.
  *    "EE_446_Final_Project_inferencing.h")
  * 5. Edit PASSWORD_SEQUENCE[] below to match your team's actual password
+ *    (current label set: "Right1", "Left1", "Up1", "Down1")
  */
 
 // ---- REPLACE THIS with your actual Edge Impulse exported header ----
-#include "EE_446_Final_Project_inferencing.h"
+#include <EE_446_Final_Project_inferencing.h>
 #include <Arduino_BMI270_BMM150.h>
 
 // ============================================================
@@ -27,7 +28,8 @@
 
 // Your gesture password, in order. Must exactly match the label
 // strings Edge Impulse trained on (case-sensitive).
-const char* PASSWORD_SEQUENCE[] = {"Circle", "Down", "Left"};   // <-- CUSTOMIZE THIS
+// Current label set: "Right1", "Left1", "Up1", "Down1"
+const char* PASSWORD_SEQUENCE[] = {"Left1", "Up1", "Right1"};   // <-- CUSTOMIZE THIS
 const int PASSWORD_LENGTH = 3;
 
 // Minimum confidence to accept a classification as a real gesture.
@@ -35,10 +37,11 @@ const int PASSWORD_LENGTH = 3;
 // since there's no dedicated Idle class in the current label set.
 const float CONFIDENCE_THRESHOLD = 0.75f;
 
-// After a gesture is accepted, ignore new classifications for this
-// long before allowing the next gesture to register. Prevents one
-// physical gesture (which spans several overlapping inference windows)
-// from being counted multiple times.
+// (Previously used for a timer-based cooldown between classifications.
+// No longer needed for that purpose - the capture state machine's
+// rest-detection (ONSET_THRESHOLD / REST_THRESHOLD) now handles debounce
+// directly and more accurately. Left in place in case you want a hard
+// minimum spacing between password entries; currently unused.)
 const unsigned long COOLDOWN_MS = 800;
 
 // If the password sequence has been started (at least 1 correct gesture
@@ -46,13 +49,16 @@ const unsigned long COOLDOWN_MS = 800;
 // the attempt times out and resets.
 const unsigned long MAX_INTER_GESTURE_MS = 4000;
 
-// Minimum summed |accel| across a window to even bother running inference.
-// Filters out "board sitting still" windows before they reach the
-// classifier, since the model has no dedicated Idle class and will
-// otherwise always output some gesture label for a flat/noise signal.
-// TUNE THIS: hold the board still and print motion_energy for a few
-// seconds to see typical "quiet" values, then set this comfortably above them.
-const float MOTION_THRESHOLD = 3.0f;
+// Per-sample motion magnitude (gravity-compensated) needed to START capturing
+// a gesture. Lower than what a full gesture produces, but well above resting noise.
+// TUNE THIS empirically (see debug print instructions below).
+const float ONSET_THRESHOLD = 0.5f;
+
+// Per-sample motion magnitude below which the hand is considered "at rest" again.
+// Deliberately LOWER than ONSET_THRESHOLD (hysteresis) so a brief lull mid-gesture
+// doesn't falsely reset capture. Must return below this before the next gesture
+// can be armed - this recreates the rest-to-rest structure your training data has.
+const float REST_THRESHOLD = 0.8f;
 
 // ============================================================
 // STATE
@@ -61,9 +67,15 @@ const float MOTION_THRESHOLD = 3.0f;
 static float feature_buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
 static int feature_ix = 0;
 
+// Trigger-based capture state machine - replaces free-running continuous
+// inference. IDLE = waiting for motion to start. CAPTURING = filling a
+// fresh, gesture-aligned window. COOLDOWN = gesture classified, waiting
+// for the hand to return to rest before arming for the next one.
+enum CaptureState { IDLE, CAPTURING, COOLDOWN };
+CaptureState capture_state = IDLE;
+
 int sequence_progress = 0;             // how many correct gestures entered so far
 unsigned long last_gesture_time = 0;   // time of last accepted gesture
-unsigned long cooldown_until = 0;      // ignore classifications until this millis()
 
 // ============================================================
 // SETUP
@@ -115,37 +127,42 @@ void loop() {
       IMU.readAcceleration(ax, ay, az);
       IMU.readGyroscope(gx, gy, gz);
 
-      feature_buffer[feature_ix++] = ax;
-      feature_buffer[feature_ix++] = ay;
-      feature_buffer[feature_ix++] = az;
-      feature_buffer[feature_ix++] = gx;
-      feature_buffer[feature_ix++] = gy;
-      feature_buffer[feature_ix++] = gz;
+      // Gravity-compensated motion magnitude - orientation independent,
+      // since it doesn't matter which axis is "up" for this check.
+      float accel_mag = sqrt(ax * ax + ay * ay + az * az);
+      float sample_motion = fabs(accel_mag - 1.0f);  // 1.0g at rest
+     // Serial.println(sample_motion);
 
-      // Buffer full -> run inference
-      if (feature_ix >= EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
-        // Motion gate: skip inference entirely if the window looks
-        // basically stationary (just gravity + noise).
-        float motion_energy = 0;
-        for (int i = 0; i < EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE; i += EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME) {
-          motion_energy += fabs(feature_buffer[i])     // accX
-                          + fabs(feature_buffer[i + 1]) // accY
-                          + fabs(feature_buffer[i + 2]); // accZ
+      if (capture_state == IDLE) {
+        // Waiting for a gesture to start. Don't touch the buffer yet.
+        if (sample_motion > ONSET_THRESHOLD) {
+          feature_ix = 0;
+          capture_state = CAPTURING;
+          // fall through so this first sample gets recorded below
         }
+      }
 
-        if (motion_energy >= MOTION_THRESHOLD) {
+      if (capture_state == CAPTURING) {
+        feature_buffer[feature_ix++] = ax;
+        feature_buffer[feature_ix++] = ay;
+        feature_buffer[feature_ix++] = az;
+        feature_buffer[feature_ix++] = gx;
+        feature_buffer[feature_ix++] = gy;
+        feature_buffer[feature_ix++] = gz;
+
+        if (feature_ix >= EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
+          // Full gesture-aligned window captured - classify it ONCE,
+          // the same way an isolated recording in Edge Impulse would be.
           run_inference();
+          feature_ix = 0;
+          capture_state = COOLDOWN;
         }
-        // else: too still, skip classification for this window
-
-        // Slide the window instead of clearing it entirely, so we're
-        // doing overlapping continuous inference rather than waiting
-        // for a full fresh window each time. Shift out the oldest
-        // ~20% of samples (mirrors your Edge Impulse stride settings).
-        int shift = EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE / 5;
-        memmove(feature_buffer, feature_buffer + shift,
-                (EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE - shift) * sizeof(float));
-        feature_ix = EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE - shift;
+      } else if (capture_state == COOLDOWN) {
+        // Wait for the hand to actually return to rest before allowing
+        // the next gesture. Prevents re-triggering mid-motion.
+        if (sample_motion < REST_THRESHOLD) {
+          capture_state = IDLE;
+        }
       }
     }
   }
@@ -189,11 +206,6 @@ void run_inference() {
     }
   }
 
-  // Respect cooldown - ignore classifications until it expires
-  if (millis() < cooldown_until) {
-    return;
-  }
-
   // Below confidence threshold -> treat as "no gesture" / uncertain
   if (best_score < CONFIDENCE_THRESHOLD) {
     return;
@@ -207,7 +219,6 @@ void run_inference() {
   Serial.println("%)");
 
   handle_gesture(best_label);
-  cooldown_until = millis() + COOLDOWN_MS;
 }
 
 void handle_gesture(const char* label) {
