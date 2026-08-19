@@ -215,6 +215,12 @@ void processGesture(const char* gesture) {
       if (strcmp(gesture, "Left1") == 0) {
           Serial.println();
           Serial.println("LEFT detected.");
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Detected: ");
+          lcd.setCursor(0,1);
+          lcd.print("LEFT1");
+          delay(500);
 
           startPassword();
 
@@ -226,6 +232,12 @@ void processGesture(const char* gesture) {
   if (passwordState == WAITING_FOR_GESTURE) {
     Serial.print("Detected: ");
     Serial.println(gesture);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Detected: ");
+    lcd.setCursor(0,1);
+    lcd.print(gesture);
+    delay(500);
 
     if (strcmp(gesture, password[passwordIndex]) == 0) {
         Serial.println("CORRECT!");
@@ -279,6 +291,11 @@ void loop() {
   }
 #endif
   ei_printf("\nStarting inferencing in 1 second...\r\n");
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Sampling Starting in");
+  lcd.setCursor(0,1);
+  lcd.print("1 Second");
   delay(1000);
 
   //including this to make sure that we don't accpet another gesture right after the pervious one
@@ -286,6 +303,10 @@ void loop() {
       return;
   }
   ei_printf("Sampling...\r\n");
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Sampling....");
+
   float buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE] = { 0 };
 
   //collecting sensor data
@@ -380,6 +401,12 @@ void loop() {
     Serial.println(
         "No confident gesture detected."
     );
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("No Confident"); 
+    lcd.setCursor(0,1);
+    lcd.print("Gesture Detected");
+    delay(500);
   }
 #endif
     #if EI_CLASSIFIER_HAS_ANOMALY == 1
