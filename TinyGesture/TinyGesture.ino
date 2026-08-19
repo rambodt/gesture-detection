@@ -24,6 +24,7 @@ typedef struct {
 
 // ------------ Global Variables ---------------------
 #define CONVERT_G_TO_MS2    9.80665f
+<<<<<<< HEAD
 
 // PATCH 1 (do not lose in merges): training data peaks near 1.84 g.
 // 2.0f clips real gestures; must be 4.0f.
@@ -33,6 +34,9 @@ typedef struct {
 // the on-device evaluation (Tables C/D). MUST be 0 for the demo.
 #define EVAL_MODE 0
 
+=======
+#define MAX_ACCEPTED_RANGE  2.0f
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
 #define N_SENSORS 18
 #define GESTURE_CONFIDENCE 0.70f
 #define GESTURE_COOLDOWN_MS 1000
@@ -110,6 +114,7 @@ const int PASSWORD_LENGTH = 4;
 int passwordIndex = 0;
 unsigned long lastGestureTime = 0;
 
+<<<<<<< HEAD
 #if EVAL_MODE
 int evalTrial = 0;
 #endif
@@ -131,6 +136,17 @@ void setup() {
 #else
   lcd.print("Enter Password");
 #endif
+=======
+void setup() {
+  Serial.begin(115200); //starting communciation
+    while (!Serial);
+  lcd.init();
+  lcd.backlight();
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Enter Password");
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
 
   Serial.println();
   Serial.println("==============================");
@@ -142,12 +158,20 @@ void setup() {
   Serial.println();
 
   //incorrect sensor detection test
+<<<<<<< HEAD
   if (ei_connect_fusion_list(EI_CLASSIFIER_FUSION_AXES_STRING) == false) {
+=======
+  if (ei_connect_fusion_list(EI_CLASSIFIER_FUSION_AXES_STRING) == false) { 
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
       ei_printf(
           "ERR: Errors in sensor list detected\r\n"
       ); return;
   }
+<<<<<<< HEAD
   //loop through the sensors and intialize uninitalized sensors and sent a error message if sensors
+=======
+  //loop through the sensors and intialize uninitalized sensors and sent a error message if sensors 
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
   //could not be initalized
   for (int i = 0; i < fusion_ix; i++) {
       if (sensors[fusion_sensors[i]].status == NOT_INIT) {
@@ -174,11 +198,17 @@ void enterIdle(){
   passwordState = IDLE;
   passwordIndex = 0;
 
+<<<<<<< HEAD
 #if !EVAL_MODE
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Enter Password");
 #endif
+=======
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Enter Password");
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
 
   Serial.println();
   Serial.println("----------------------");
@@ -243,7 +273,7 @@ void processGesture(const char* gesture) {
 
           delay(2000);
           passwordState = PASSWORD_UNLOCKED;
-        }
+        }                                                                                                                                                                                                                                                                                                                                                                                                                     
         else {
           Serial.print("Enter next gesture: ");
         }
@@ -277,17 +307,28 @@ void loop() {
   if (passwordState == PASSWORD_UNLOCKED) {
         return;
   }
+<<<<<<< HEAD
 #endif
   ei_printf("\nStarting inferencing in 1 second...\r\n");
   delay(1000);
 
   //including this to make sure that we don't accpet another gesture right after the pervious one
+=======
+  ei_printf("\nStarting inferencing in 1 second...\r\n");
+  delay(1000);
+
+  //including this to make sure that we don't accpet another gesture right after the pervious one 
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
   if (millis() - lastGestureTime < GESTURE_COOLDOWN_MS) {
       return;
   }
   ei_printf("Sampling...\r\n");
   float buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE] = { 0 };
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
   //collecting sensor data
   for (size_t ix = 0; ix < EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE; ix += EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME) {
     int64_t next_tick =
@@ -343,6 +384,7 @@ void loop() {
     }
   }
 
+<<<<<<< HEAD
 #if EVAL_MODE
   // -------- Evaluation logging (password FSM bypassed) --------
   evalTrial++;
@@ -360,6 +402,8 @@ void loop() {
   Serial.println("%)");
   lastGestureTime = millis();
 #else
+=======
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
   if (bestGestureIndex >= 0 && highestConfidence >= GESTURE_CONFIDENCE) {
     const char* detectedGesture =
         result.classification[
@@ -381,7 +425,10 @@ void loop() {
         "No confident gesture detected."
     );
   }
+<<<<<<< HEAD
 #endif
+=======
+>>>>>>> cbf5989059e547c87da4ea30ea4dec5aaaaea060
     #if EI_CLASSIFIER_HAS_ANOMALY == 1
         ei_printf(
             "Anomaly: %.3f\r\n",
